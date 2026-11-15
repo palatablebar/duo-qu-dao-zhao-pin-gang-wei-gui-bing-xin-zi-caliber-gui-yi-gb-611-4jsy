@@ -19,9 +19,12 @@ from datetime import timedelta
 from sqlalchemy import func, select
 
 from src.config.database import session_scope
+from src.constants.enums import BatchStatus, PostIngestState
 from src.models.audit import AuditLog
 from src.models.channel import Channel
 from src.models.cluster import Cluster
+from src.models.ingest_batch import IngestBatch
+from src.models.ingest_item import IngestItem
 from src.models.post import Post
 from src.models.review import Review
 from src.models.run import Run
@@ -29,6 +32,7 @@ from src.models.user import User
 from src.services import review_service, run_service
 from src.services.normalize_service import enrich_post_fields
 from src.utils.security import hash_password
+from src.utils.timeutil import utcnow
 
 from scripts.demo_config import (
     ANCHOR,
@@ -136,6 +140,95 @@ def ensure_posts(db) -> int:
     return db.scalar(select(func.count()).select_from(Post)) or 0
 
 
+def ensure_ingest_batches(db) -> int:
+    """为每个渠道补一个演示来稿批次，把 seed 岗位挂到批次口径上。
+
+    幂等：按 (channel_id, batch_no) 查，已存在则跳过。
+    演示剧本：3 个渠道收齐（complete），1 个渠道本批缺量（partial），
+    缺量渠道的部分历史岗位以「旧稿沿用」状态留在清单里。
+    """
+    channels = {channel.code: channel for channel in db.scalars(select(Channel)).all()}
+    # 缺量渠道与缺量外部ID（取该渠道实际岗位里的两个，模拟本批应到未到）
+    partial_channel = "liepin"
+    created = 0
+    for code, channel in channels.items():
+        posts = db.scalars(select(Post).where(Post.channel_id == channel.id).order_by(Post.id)).all()
+        if not posts:
+            continue
+        batch_no = f"seed-{code}-20261114-01"
+        existing = db.scalar(
+            select(IngestBatch).where(
+                IngestBatch.channel_id == channel.id, IngestBatch.batch_no == batch_no
+            )
+        )
+        if existing is not None:
+            continue
+
+        if code == partial_channel:
+            missing_ids = [post.external_id for post in posts[:2]]
+            arrived = posts[2:]
+            status = BatchStatus.PARTIAL.value
+            source_status = "partial"
+        else:
+            missing_ids = []
+            arrived = posts
+            status = BatchStatus.COMPLETE.value
+            source_status = "success"
+
+        now = utcnow()
+        batch = IngestBatch(
+            channel_id=channel.id,
+            batch_no=batch_no,
+            status=status,
+            source_status=source_status,
+            expected_count=len(posts),
+            arrived_count=len(arrived),
+            inserted_count=len(arrived),
+            duplicate_count=0,
+            invalid_count=0,
+            missing_count=len(missing_ids),
+            expected_external_ids=[post.external_id for post in posts],
+            missing_external_ids=missing_ids,
+            raw_receipt={"seed": True, "channel_code": code, "batch_no": batch_no, "post_count": len(arrived)},
+            note="演示数据：采集器按批次回传的回执快照" if status == BatchStatus.COMPLETE.value
+            else "演示数据：采集器报部分成功，本批缺量，历史岗位以旧稿沿用补位",
+            retries=0,
+            reconciled=True,
+            received_at=channel.last_crawled_at or now,
+        )
+        db.add(batch)
+        db.flush()
+
+        carried = 0
+        for index, post in enumerate(posts, start=1):
+            is_arrived = post.external_id not in set(missing_ids)
+            if is_arrived:
+                post.ingest_batch_id = batch.id
+                post.ingest_state = PostIngestState.FRESH.value
+                outcome = "inserted"
+                reason = None
+            else:
+                post.ingest_state = PostIngestState.CARRIED.value
+                carried += 1
+                outcome = "duplicate"
+                reason = "本批未到，沿用上一批旧岗位（不冒充新稿）"
+            db.add(
+                IngestItem(
+                    batch_id=batch.id,
+                    seq=index,
+                    external_id=post.external_id,
+                    outcome=outcome,
+                    post_id=post.id if is_arrived else None,
+                    reason=reason,
+                    raw_item={"seed": True, "external_id": post.external_id},
+                )
+            )
+        batch.carried_count = carried
+        created += 1
+    db.flush()
+    return created
+
+
 def ensure_run(db) -> Run:
     for spec in SEED_RUNS:
         run = db.scalar(select(Run).where(Run.seed_key == spec["seed_key"]))
@@ -210,6 +303,7 @@ def seed_all() -> dict:
         users = ensure_users(db)
         channels = ensure_channels(db)
         posts = ensure_posts(db)
+        batches = ensure_ingest_batches(db)
         run = ensure_run(db)
         ensure_reviews(db, run)
         ensure_audit(db)
@@ -220,13 +314,14 @@ def seed_all() -> dict:
         pending = review_service.pending_total(db)
         summary = (
             f"SEED_SUMMARY brand=jobmerge users={users} sources={channels} "
-            f"runs={runs} findings={clusters} pending={pending}"
+            f"runs={runs} findings={clusters} pending={pending} batches={batches}"
         )
         print(summary, flush=True)
         return {
             "users": users,
             "channels": channels,
             "posts": posts,
+            "batches": batches,
             "runs": runs,
             "clusters": clusters,
             "pending": pending,

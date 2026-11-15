@@ -1,5 +1,5 @@
 /** 业务组件：检字表格 / 过滤条 / 簇详情抽屉（含复核） —— 多个页面共用。 */
-import { ENUMS, can, decisionTone, parseTone, statusTone } from './config.js';
+import { ENUMS, can, decisionTone, parseTone, releaseTone, statusTone } from './config.js';
 import { api } from './api.js';
 import { badge, drawer, emptyState, errorMessage, esc, field, fmtTime, kv, table, toast } from './ui.js';
 
@@ -115,20 +115,24 @@ export async function openClusterDrawer(ctx, clusterId, { onDone } = {}) {
   }
   const members = cluster.members || [];
   const memberHtml = members.length
-    ? `<div class="table-wrap"><table class="data" style="min-width:520px">
-        <thead><tr><th>渠道</th><th>公司 / 职位</th><th>薪资原值</th><th>归一后月薪</th><th>相似度</th></tr></thead>
+    ? `<div class="table-wrap"><table class="data" style="min-width:560px">
+        <thead><tr><th>渠道</th><th>公司 / 职位</th><th>来稿状态</th><th>薪资原值</th><th>归一后月薪</th><th>相似度</th></tr></thead>
         <tbody>${members
           .map(
             (item) => `<tr class="${item.is_golden ? 'is-golden' : ''}">
               <td class="tight"><span class="mono">${esc(item.channel_code)}</span><div class="cell-sub">${esc(item.channel_name || '')}</div></td>
               <td><b>${esc(item.company_raw)}</b><div class="cell-sub">${esc(item.title_raw)} · ${esc(item.city)}</div></td>
+              <td>${badge(
+                { fresh: 'ok', carried: 'warn', isolated: 'danger' }[item.ingest_state] || 'info',
+                item.ingest_label || ENUMS.ingestState[item.ingest_state] || item.ingest_state,
+              )}</td>
               <td class="mono">${esc(item.salary_raw)}</td>
               <td class="num">${salaryRange(item.monthly_low, item.monthly_high)}</td>
               <td class="num">${(Number(item.similarity?.score || 0) * 100).toFixed(1)}%</td>
             </tr>`,
           )
           .join('')}</tbody></table></div>
-      <div class="panel-note">黄色底为 golden record（字段最全 + 发布最新）；相似度为与 golden 的加权得分。</div>`
+      <div class="panel-note">黄色底为 golden record（字段最全 + 发布最新）；「旧稿沿用」成员来自缺量渠道的历史批次，含这类成员的簇不进完整发布清单。</div>`
     : emptyState({ title: '该簇没有关联成员', hint: '可能是历史运行留下的空簇。' });
 
   const { root, close } = drawer({
@@ -206,6 +210,15 @@ export function clusterTable(rows, role) {
         render: (row) => Number(row.confidence).toFixed(3),
       },
       { key: 'status', label: '状态', render: (row) => clusterStatusBadge(row) },
+      {
+        key: 'release_state',
+        label: '发布口径',
+        render: (row) =>
+          badge(
+            releaseTone(row.release_state || 'releasable'),
+            ENUMS.releaseState[row.release_state] || row.release_label || '可发布',
+          ),
+      },
       {
         key: 'needs_review',
         label: '复核',

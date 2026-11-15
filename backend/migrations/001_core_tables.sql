@@ -50,9 +50,50 @@ CREATE TABLE posts (
     expire_at         TIMESTAMP,
     raw_text          TEXT,
     seed_key          VARCHAR(120),
+    ingest_batch_id   INTEGER REFERENCES ingest_batches(id) ON DELETE SET NULL,
+    ingest_state      VARCHAR(16) NOT NULL DEFAULT 'fresh',
     created_at        TIMESTAMP    NOT NULL,
     updated_at        TIMESTAMP    NOT NULL,
     CONSTRAINT uq_posts_channel_external UNIQUE (channel_id, external_id)
+);
+
+CREATE TABLE ingest_batches (
+    id                    SERIAL PRIMARY KEY,
+    channel_id            INTEGER      NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    batch_no              VARCHAR(60)  NOT NULL,
+    status                VARCHAR(16)  NOT NULL,
+    source_status         VARCHAR(20)  NOT NULL,
+    expected_count        INTEGER      NOT NULL DEFAULT 0,
+    arrived_count         INTEGER      NOT NULL DEFAULT 0,
+    inserted_count        INTEGER      NOT NULL DEFAULT 0,
+    duplicate_count       INTEGER      NOT NULL DEFAULT 0,
+    invalid_count         INTEGER      NOT NULL DEFAULT 0,
+    missing_count         INTEGER      NOT NULL DEFAULT 0,
+    carried_count         INTEGER      NOT NULL DEFAULT 0,
+    isolated_count        INTEGER      NOT NULL DEFAULT 0,
+    expected_external_ids JSON,
+    missing_external_ids  JSON,
+    raw_receipt           JSON,
+    note                  TEXT,
+    retries               INTEGER      NOT NULL DEFAULT 0,
+    reconciled            BOOLEAN      NOT NULL DEFAULT FALSE,
+    received_at           TIMESTAMP    NOT NULL,
+    created_at            TIMESTAMP    NOT NULL,
+    updated_at            TIMESTAMP    NOT NULL,
+    CONSTRAINT uq_ingest_batch_channel_no UNIQUE (channel_id, batch_no)
+);
+
+CREATE TABLE ingest_items (
+    id          SERIAL PRIMARY KEY,
+    batch_id    INTEGER      NOT NULL REFERENCES ingest_batches(id) ON DELETE CASCADE,
+    seq         INTEGER      NOT NULL,
+    external_id VARCHAR(60)  NOT NULL,
+    outcome     VARCHAR(16)  NOT NULL,
+    post_id     INTEGER REFERENCES posts(id) ON DELETE SET NULL,
+    reason      TEXT,
+    raw_payload JSON,
+    created_at  TIMESTAMP    NOT NULL,
+    CONSTRAINT uq_ingest_item_batch_seq UNIQUE (batch_id, seq)
 );
 
 CREATE TABLE runs (
@@ -68,6 +109,9 @@ CREATE TABLE runs (
     metrics         JSON,
     log_text        TEXT,
     seed_key        VARCHAR(120) UNIQUE,
+    publish_complete       BOOLEAN NOT NULL DEFAULT TRUE,
+    releasable_clusters    INTEGER NOT NULL DEFAULT 0,
+    withheld_clusters      INTEGER NOT NULL DEFAULT 0,
     started_at      TIMESTAMP    NOT NULL,
     finished_at     TIMESTAMP
 );
@@ -99,6 +143,10 @@ CREATE TABLE clusters (
     confidence      DOUBLE PRECISION NOT NULL DEFAULT 1,
     needs_review    BOOLEAN      NOT NULL DEFAULT FALSE,
     review_reason   VARCHAR(200),
+    release_state          VARCHAR(16) NOT NULL DEFAULT 'releasable',
+    carried_member_count   INTEGER     NOT NULL DEFAULT 0,
+    isolated_member_count  INTEGER     NOT NULL DEFAULT 0,
+    release_note           VARCHAR(200) NOT NULL DEFAULT '',
     golden_post_id  INTEGER      REFERENCES posts(id) ON DELETE SET NULL,
     created_at      TIMESTAMP    NOT NULL,
     updated_at      TIMESTAMP    NOT NULL,

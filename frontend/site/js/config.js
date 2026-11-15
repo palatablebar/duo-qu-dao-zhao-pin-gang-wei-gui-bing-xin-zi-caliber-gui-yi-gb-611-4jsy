@@ -29,9 +29,10 @@ export const BRAND = {
 export const NAV = [
   { to: '#/overview', no: '01', label: '头版总览', permission: 'overview:read' },
   { to: '#/channels', no: '02', label: '渠道与采集', permission: 'channel:read' },
-  { to: '#/posts', no: '03', label: '原始岗位', permission: 'post:read' },
-  { to: '#/clusters', no: '04', label: '归并结果', permission: 'cluster:read' },
-  { to: '#/reviews', no: '05', label: '复核与导出', permission: 'cluster:read' },
+  { to: '#/ingest', no: '03', label: '来稿批次', permission: 'ingest:read' },
+  { to: '#/posts', no: '04', label: '原始岗位', permission: 'post:read' },
+  { to: '#/clusters', no: '05', label: '归并结果', permission: 'cluster:read' },
+  { to: '#/reviews', no: '06', label: '复核与导出', permission: 'cluster:read' },
 ];
 
 export const ROLE_LABELS = {
@@ -50,13 +51,14 @@ export const PERMISSIONS = {
   admin: [
     'overview:read', 'channel:read', 'channel:write', 'post:read',
     'cluster:read', 'cluster:review', 'run:read', 'run:create',
-    'export:read', 'audit:read',
+    'export:read', 'audit:read', 'ingest:read', 'ingest:write',
   ],
   analyst: [
     'overview:read', 'channel:read', 'post:read',
     'cluster:read', 'cluster:review', 'run:read', 'run:create', 'export:read',
+    'ingest:read', 'ingest:write',
   ],
-  viewer: ['overview:read', 'channel:read', 'post:read', 'cluster:read'],
+  viewer: ['overview:read', 'channel:read', 'post:read', 'cluster:read', 'ingest:read'],
 };
 
 export const ENUMS = {
@@ -68,6 +70,14 @@ export const ENUMS = {
   channelKind: { site: '招聘站点', api: '接口对接', file: '文件导入', manual: '手工登记' },
   degree: { any: '不限', college: '大专', bachelor: '本科', master: '硕士', doctor: '博士' },
   experience: { any: '不限', '1-3': '1-3 年', '3-5': '3-5 年', '5-10': '5-10 年', '10+': '10 年以上' },
+  batchStatus: { complete: '本批收齐', partial: '本批缺量', failed: '本批失败', no_batch: '尚无来稿' },
+  ingestState: { fresh: '本批新稿', carried: '旧稿沿用', isolated: '隔离' },
+  releaseState: {
+    releasable: '可发布',
+    carried: '旧稿沿用·过渡',
+    isolated: '隔离不发布',
+    withheld: '暂缓发布',
+  },
 };
 
 export function can(role, permission) {
@@ -84,4 +94,16 @@ export function parseTone(status) {
 
 export function decisionTone(decision) {
   return { merge: 'ok', split: 'danger', keep: 'info' }[decision] || 'info';
+}
+
+export function batchTone(status) {
+  return { complete: 'ok', partial: 'warn', failed: 'danger', no_batch: 'info' }[status] || 'info';
+}
+
+export function ingestTone(state) {
+  return { fresh: 'ok', carried: 'warn', isolated: 'danger' }[state] || 'info';
+}
+
+export function releaseTone(state) {
+  return { releasable: 'ok', carried: 'warn', isolated: 'danger', withheld: 'high' }[state] || 'info';
 }

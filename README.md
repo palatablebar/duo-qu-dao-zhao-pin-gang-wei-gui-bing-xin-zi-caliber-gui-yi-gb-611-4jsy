@@ -34,12 +34,13 @@
 密码统一：`Demo@2026`。低权角色调用高权接口返回 **403**（真实 HTTP 状态，不是前端隐藏）：
 
 - `POST /api/channels`、`PATCH /api/channels/{id}`：仅 admin（viewer / analyst 均 403）
-- `POST /api/runs`、`POST /api/reviews`：admin + analyst（viewer 403）
+- `POST /api/runs`、`POST /api/reviews`、`POST /api/ingest/batches`：admin + analyst（viewer 403）
 - `GET /api/exports/*.csv`：admin + analyst（viewer 403）
+- `GET /api/ingest/ledger`、`GET /api/ingest/batches*`：全部角色可读（viewer 看到的是脱敏后的岗位数据）
 - `GET /api/audit`：仅 admin（viewer / analyst 403）
-- 无 token → 401；非法参数 → 422；重复自然键（渠道编码）→ 409
+- 无 token → 401；非法参数 → 422；重复自然键（渠道编码）→ 409；回执缺应有数 → 422
 
-## 3. 业务模块表（6 个）
+## 3. 业务模块表（7 个）
 
 | # | 模块 | 对应页面 | 后端 services / controller | 主要 API |
 |---|---|---|---|---|
@@ -48,20 +49,44 @@
 | ③ | 指纹与分块 | 归并结果（分块面板） | `dedupe`（算法 B 的 blocking）、`merge_service` / `run_controller` | `POST /api/runs`、`GET /api/runs`、`GET /api/runs/{id}` |
 | ④ | 相似度归并（golden record） | 归并结果 | `dedupe.build_clusters`、`merge_service`、`cluster_service` / `cluster_controller` | `GET /api/clusters`、`GET /api/clusters/{id}` |
 | ⑤ | 人工复核（合并 / 拆分 / 保持） | 复核与导出 | `review_service` / `review_controller` | `GET /api/reviews/pending`、`GET /api/reviews`、`POST /api/reviews` |
-| ⑥ | 结果导出与审计 | 复核与导出（导出面板 + 审计） | `export_service`、`audit_service` / `export_controller`、`audit` 路由 | `GET /api/exports/{clusters,posts,reviews,runs}.csv`、`GET /api/audit` |
+| ⑥ | 结果导出与审计 | 复核与导出（导出面板 + 审计） | `export_service`、`audit_service` / `export_controller`、`audit` 路由 | `GET /api/exports/{clusters,posts,reviews,runs,ingest-batches}.csv`、`GET /api/audit` |
+| ⑦ | 来稿批次核对与发布口径 | 来稿批次（+ 头版横幅） | `ingest_service` / `ingest_controller` | `POST /api/ingest/batches`、`GET /api/ingest/batches`、`GET /api/ingest/batches/{id}`、`GET /api/ingest/ledger` |
 
 > 登录（`auth_service`）、总览（`overview_service`）、限流与审计中间件属于横切能力，不计入业务模块。
 
-## 4. 页面（6 个）
+### 模块⑦ 来稿批次口径（防止旧岗位冒充新稿）
+
+各渠道采集器按批次回传，系统按批核对四个数并留痕（`ingest_batches` + `ingest_items`，原始回执不丢）：
+
+- **应有数** `expected_count`：回执里 `expected_external_ids` 清单长度（或 `expected_count`）；
+- **实到数** `arrived_count`：有效且去重后真实到达的岗位数（批内重复、缺字段无效行不计入）；
+- **重复数** `duplicate_count`：批内重复回执 + 自然键（渠道+外部ID）已存在的来稿，**重试同一批不重复新增岗位**；
+- **接收时间** `received_at`：首次接收时间，重试保留不覆盖，`retries` 记录重试次数。
+
+批次核对结论 `status` 与岗位来稿状态 `ingest_state`、渠道发布口径 `release_state` 联动：
+
+| 批次状态 | 含义 | 岗位处理 | 渠道发布口径 |
+|---|---|---|---|
+| `complete` 本批收齐 | 实到 = 应有 | 本批新稿 `fresh`，历史岗位转 `carried` | `releasable` 可发布 |
+| `partial` 本批缺量 | 采集器报部分成功/超时或缺量 | 本批实到仍是 `fresh`；**旧岗位标 `carried` 沿用，不冒充新稿** | `carried` 旧稿沿用·过渡 |
+| `failed` 本批失败 | 0 条有效新稿 | 该渠道岗位全部 `isolated` 隔离，不参与归并 | `isolated` 隔离不发布 |
+
+只要有渠道未收齐，归并运行 `publish_complete=false`：**其他渠道照常处理，但只出过渡版，不发布成完整版本**；
+含沿用/隔离成员的簇 `release_state=withheld`（暂缓发布），完整发布清单
+（`GET /api/exports/clusters.csv?complete_only=true`）只含 `releasable` 簇，行数与运行的
+`releasable_clusters` 计数逐项对上。
+
+## 4. 页面（7 个）
 
 | # | 路由 | 页面 | 说明 |
 |---|---|---|---|
 | 1 | `#/login` | 登录 · 取报单 | 报头 + 双栏导语 + 虚线取报单表单 |
-| 2 | `#/overview` | 头版总览 | 头条综述、四个报眼数字、薪资口径分布、渠道来稿量、近 7 日归并、最新运行、成员最多簇 |
+| 2 | `#/overview` | 头版总览 | 头条综述、发布版本横幅、四个报眼数字、渠道批次口径、薪资口径分布、渠道来稿量、近 7 日归并、最新运行、成员最多簇 |
 | 3 | `#/channels` | 渠道与采集 | 过滤条 + 检字表（采集计划/已入库/最近采集）+ 详情抽屉 + 登记渠道 |
-| 4 | `#/posts` | 原始岗位 | 薪资原值 vs 归一值对照表 + 岗位详情抽屉 + **算法 A 口径试算** |
-| 5 | `#/clusters` | 归并结果 | 归并簇表 + 成员对照抽屉（相似度/golden）+ 发起归并（阈值）+ 导出 |
-| 6 | `#/reviews` | 复核与导出 | 待复核队列 + 复核历史 + 4 个 CSV 导出 + 审计日志（仅 admin） |
+| 4 | `#/ingest` | 来稿批次 | 渠道批次台账（应有/实到/重复/缺量/沿用/隔离/接收时间）+ 批次历史 + 逐条回执抽屉 + 模拟采集器回执（缺量/失败/重试） |
+| 5 | `#/posts` | 原始岗位 | 薪资原值 vs 归一值对照 + 来稿状态（新稿/沿用/隔离）+ 岗位详情抽屉 + **算法 A 口径试算** |
+| 6 | `#/clusters` | 归并结果 | 归并簇表（含发布口径列）+ 成员对照抽屉（相似度/golden/来稿状态）+ 发起归并 + 全量/完整发布版导出 |
+| 7 | `#/reviews` | 复核与导出 | 待复核队列 + 复核历史 + 6 个 CSV 导出（含批次台账、完整发布版）+ 审计日志（仅 admin） |
 
 共用组件：`frontend/site/js/ui.js`（`table` / `drawer` / `field` / `badge` / `barList` / `trendChart`）与
 `frontend/site/js/components.js`（`filterBar` / `clusterTable` / `openClusterDrawer` / `salaryRange`），
@@ -79,8 +104,11 @@ open http://localhost:18200
 
 ```bash
 docker compose exec -T backend python -m scripts.seed_demo
-# SEED_SUMMARY brand=jobmerge users=3 sources=4 runs=1 findings=118 pending=9
+# SEED_SUMMARY brand=jobmerge users=3 sources=4 runs=1 findings=118 pending=9 batches=4
 ```
+
+seed 同时为 4 个渠道补来稿批次：3 个渠道本批收齐（complete），猎聘（liepin）报部分成功本批缺量
+（partial，缺 2 条、2 条旧稿沿用），用于演示「缺量不冒充新稿、其他渠道先处理但只出过渡版」。
 
 ## 6. 访问地址
 
@@ -107,13 +135,14 @@ docker compose exec -T backend python -m scripts.seed_demo
 backend/
   src/config/{app,database,settings,celery_app}.py
   src/constants/{enums,roles,limits,error_codes,log_templates}.py
-  src/models/{user,channel,post,cluster,run,review,audit}.py
-  src/schemas/{auth,channel,cluster,run,salary,common}.py
+  src/models/{user,channel,post,cluster,run,review,audit,ingest_batch,ingest_item}.py
+  src/schemas/{auth,channel,cluster,run,salary,ingest,common}.py
   src/services/
     salary_norm.py       # 算法 A：薪资口径归一（纯函数）
     normalize_service.py # 公司名 / 职位词干 / 城市 / 学历经验归一
     dedupe.py            # 算法 B：分块 + 相似度 + 并查集聚类
-    merge_service.py     # 归并运行落库
+    merge_service.py     # 归并运行落库（含批次发布口径：隔离剔除 / 暂缓簇 / 完整发布版标记）
+    ingest_service.py    # 来稿批次核对：应有/实到/重复/缺量、旧稿沿用与隔离、渠道发布台账
     channel_service.py post_service.py cluster_service.py review_service.py
     run_service.py overview_service.py export_service.py audit_service.py auth_service.py
   src/controllers/ src/routes/ src/middlewares/
@@ -183,6 +212,10 @@ seed 数据实算：160 条原始岗位 → **118 簇**（21 个多成员簇、�
 | 渠道类型 `site/api/file/manual` | `constants/enums.py`（`ChannelKind`） | `config.js`（`ENUMS.channelKind`） |
 | 学历 `any/college/bachelor/master/doctor` | `constants/enums.py`（`Degree`） | `config.js`（`ENUMS.degree`） |
 | 经验 `any/1-3/3-5/5-10/10+` | `constants/enums.py`（`Experience`） | `config.js`（`ENUMS.experience`） |
+| 来稿批次 `complete/partial/failed` | `constants/enums.py`（`BatchStatus`） | `config.js`（`ENUMS.batchStatus`、`batchTone`） |
+| 岗位来稿状态 `fresh/carried/isolated` | `constants/enums.py`（`PostIngestState`） | `config.js`（`ENUMS.ingestState`、`ingestTone`） |
+| 发布口径 `releasable/carried/isolated/withheld` | `constants/enums.py`（`ReleaseState`） | `config.js`（`ENUMS.releaseState`、`releaseTone`） |
+| 回执结果 `inserted/duplicate/invalid` | `constants/enums.py`（`ItemOutcome`） | `config.js`（`ENUMS` 由批次抽屉映射） |
 
 ## 12. Docker 说明
 

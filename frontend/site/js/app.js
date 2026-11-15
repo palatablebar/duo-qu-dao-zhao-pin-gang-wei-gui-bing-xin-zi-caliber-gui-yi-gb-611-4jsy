@@ -5,6 +5,7 @@ import { errorMessage, esc, toast } from './ui.js';
 import loginPage from './pages/login.js';
 import overviewPage from './pages/overview.js';
 import channelsPage from './pages/channels.js';
+import ingestPage from './pages/ingest.js';
 import postsPage from './pages/posts.js';
 import clustersPage from './pages/clusters.js';
 import reviewsPage from './pages/reviews.js';
@@ -12,6 +13,7 @@ import reviewsPage from './pages/reviews.js';
 const routes = [
   { path: '#/overview', page: overviewPage, permission: 'overview:read' },
   { path: '#/channels', page: channelsPage, permission: 'channel:read' },
+  { path: '#/ingest', page: ingestPage, permission: 'ingest:read' },
   { path: '#/posts', page: postsPage, permission: 'post:read' },
   { path: '#/clusters', page: clustersPage, permission: 'cluster:read' },
   { path: '#/reviews', page: reviewsPage, permission: 'cluster:read' },

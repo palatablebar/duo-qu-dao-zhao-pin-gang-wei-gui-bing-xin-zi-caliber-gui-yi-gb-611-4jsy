@@ -121,6 +121,84 @@ TRIGGER_LABELS: dict[str, str] = {
 }
 
 
+class BatchStatus(StrEnum):
+    """来稿批次状态：回执核对后的结论。
+
+    complete  = 本批应到岗位全部到齐；
+    partial   = 采集器报部分成功/超时，本批缺量；
+    failed    = 本批完全失败，没有任何有效新稿。
+    """
+
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
+BATCH_STATUS_LABELS: dict[str, str] = {
+    BatchStatus.COMPLETE.value: "本批收齐",
+    BatchStatus.PARTIAL.value: "本批缺量",
+    BatchStatus.FAILED.value: "本批失败",
+}
+
+BATCH_STATUS_ORDER: list[str] = [
+    BatchStatus.COMPLETE.value,
+    BatchStatus.PARTIAL.value,
+    BatchStatus.FAILED.value,
+]
+
+
+class ItemOutcome(StrEnum):
+    """批次内单条回执的落库结果。"""
+
+    INSERTED = "inserted"   # 新岗位，已入库
+    DUPLICATE = "duplicate"  # 重复回执（批内重复或自然键已存在），未新增
+    INVALID = "invalid"      # 缺必填字段，隔离不入库
+
+
+ITEM_OUTCOME_LABELS: dict[str, str] = {
+    ItemOutcome.INSERTED.value: "新稿入库",
+    ItemOutcome.DUPLICATE.value: "重复未新增",
+    ItemOutcome.INVALID.value: "无效隔离",
+}
+
+
+class PostIngestState(StrEnum):
+    """原始岗位的来稿状态（按渠道最新批次口径）。
+
+    fresh    = 最新批次的有效新稿；
+    carried  = 旧批次岗位，因最新批次缺量而暂沿用（不得冒充新稿）；
+    isolated = 失败/无效批次里的岗位，隔离不参与归并与发布。
+    """
+
+    FRESH = "fresh"
+    CARRIED = "carried"
+    ISOLATED = "isolated"
+
+
+POST_INGEST_LABELS: dict[str, str] = {
+    PostIngestState.FRESH.value: "本批新稿",
+    PostIngestState.CARRIED.value: "旧稿沿用",
+    PostIngestState.ISOLATED.value: "隔离",
+}
+
+
+class ReleaseState(StrEnum):
+    """渠道/归并簇的发布口径。"""
+
+    RELEASABLE = "releasable"   # 渠道收齐，可进完整发布版
+    CARRIED = "carried"         # 含旧稿沿用，仅过渡版
+    ISOLATED = "isolated"       # 渠道失败/岗位隔离，不发布
+    WITHHELD = "withheld"       # 簇含沿用/隔离成员，不进完整发布清单
+
+
+RELEASE_STATE_LABELS: dict[str, str] = {
+    ReleaseState.RELEASABLE.value: "可发布",
+    ReleaseState.CARRIED.value: "旧稿沿用·过渡",
+    ReleaseState.ISOLATED.value: "隔离不发布",
+    ReleaseState.WITHHELD.value: "暂缓发布",
+}
+
+
 class Degree(StrEnum):
     ANY = "any"
     COLLEGE = "college"

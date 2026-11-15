@@ -1,7 +1,7 @@
 import { api } from '../api.js';
-import { ENUMS, can } from '../config.js';
+import { ENUMS, batchTone, can, releaseTone } from '../config.js';
 import { clusterStatusBadge, fmtMoney, fmtPct, sectionHead } from '../components.js';
-import { barList, emptyState, errorBox, errorMessage, esc, fmtTime, kv, statStrip, table, trendChart } from '../ui.js';
+import { badge, barList, emptyState, errorBox, errorMessage, esc, fmtTime, kv, statStrip, table, trendChart } from '../ui.js';
 
 function latestRunBlock(latest) {
   if (!latest) {
@@ -11,8 +11,15 @@ function latestRunBlock(latest) {
   return `${kv([
     ['运行编号', `<span class="mono">${esc(latest.run_no)}</span>`],
     ['状态', `<span class="badge ${latest.status === 'success' ? 'ok' : 'warn'}">${esc(ENUMS.runStatus[latest.status] || latest.status)}</span>`],
+    [
+      '发布版本',
+      latest.publish_complete
+        ? badge('ok', '完整发布版')
+        : badge('high', `过渡版（暂缓 ${latest.withheld_clusters ?? 0} 簇）`),
+    ],
     ['相似度阈值', `<span class="mono">${Number(latest.threshold).toFixed(2)}</span>`],
     ['输入 / 输出', `${latest.posts_in} 条 → ${latest.clusters_out} 簇`],
+    ['可发布 / 暂缓', `<b>${latest.releasable_clusters ?? latest.clusters_out}</b> / ${latest.withheld_clusters ?? 0} 簇`],
     ['消重条数', `<b class="tabular">${latest.dupes_removed}</b>`],
     ['两两比较', `${metrics.pairs ?? '—'} 对 / 连边 ${metrics.edges ?? '—'} 条`],
     ['不可比占比', fmtPct(metrics.noncomparable_rate || 0)],
@@ -42,6 +49,7 @@ export const overviewPage = {
     }
     const salary = data.salary;
     const latest = data.latest_run;
+    const ingest = data.ingest || null;
     const noncomparable = salary.negotiable + salary.unparsed;
     view.innerHTML = `
       <section class="lead-story">
@@ -52,6 +60,21 @@ export const overviewPage = {
           ${noncomparable} 条岗位薪资不可比（占 <b>${fmtPct(salary.noncomparable_rate)}</b>），其中 ${salary.unparsed} 条无法解析已进不可比清单；
           ${data.clusters_expired} 个簇因岗位过期下线。
         </p>
+        ${
+          ingest
+            ? `<div class="edition-banner ${ingest.publish_complete ? 'is-complete' : 'is-partial'}">
+                ${
+                  ingest.publish_complete
+                    ? badge('ok', '完整发布版')
+                    : badge('high', '过渡版 · 不发布成完整版本')
+                }
+                <span>本批应有 <b>${ingest.expected}</b> 条、实到 <b>${ingest.arrived}</b> 条、缺量 <b class="red">${ingest.missing}</b> 条、重复回执 <b>${ingest.duplicate}</b> 条；
+                收齐渠道 ${ingest.complete_channels}/${ingest.complete_channels + ingest.partial_channels + ingest.failed_channels}，
+                旧稿沿用 <b>${ingest.carried_posts}</b> 条、隔离 <b>${ingest.isolated_posts}</b> 条。
+                缺量渠道的旧岗位只作沿用，不冒充新稿。</span>
+              </div>`
+            : ''
+        }
         <div class="lead-figures">
           <div class="fig"><b>${data.posts_total}</b><span>原始来稿</span></div>
           <div class="fig"><b>${data.clusters_total}</b><span>归并后岗位</span></div>
@@ -103,9 +126,38 @@ export const overviewPage = {
         </section>
       </div>
 
+      ${
+        ingest && ingest.channels.length
+          ? `<section class="panel">
+        ${sectionHead('07', '渠道来稿批次口径', '应有 / 实到 / 缺量 / 沿用')}
+        ${table({
+          rows: ingest.channels,
+          columns: [
+            { key: 'channel_name', label: '渠道', render: (row) => `<b>${esc(row.channel_name)}</b><div class="cell-sub mono">${esc(row.channel_code)}</div>` },
+            {
+              key: 'status',
+              label: '本批状态',
+              render: (row) => badge(batchTone(row.status), ENUMS.batchStatus[row.status] || row.status),
+            },
+            { key: 'expected_count', label: '应有', className: 'num' },
+            { key: 'arrived_count', label: '实到', className: 'num' },
+            { key: 'missing_count', label: '缺量', className: 'num', render: (row) => (row.missing_count ? `<span class="red">${row.missing_count}</span>` : '0') },
+            { key: 'carried_count', label: '沿用', className: 'num', render: (row) => (row.carried_count ? `<span class="warn">${row.carried_count}</span>` : '0') },
+            { key: 'isolated_count', label: '隔离', className: 'num' },
+            {
+              key: 'release_state',
+              label: '发布口径',
+              render: (row) => badge(releaseTone(row.release_state), ENUMS.releaseState[row.release_state] || row.release_state),
+            },
+          ],
+        })}
+        <div class="panel-note">完整发布版只包含「可发布」渠道对应的簇；缺量渠道先出过渡版，补齐后下一版恢复完整。</div>
+      </section>`
+          : ''
+      }
+
       <section class="panel">
-        ${sectionHead('06', '成员最多的归并簇', 'golden record 已就位')}
-        ${
+        ${sectionHead('06', '成员最多的归并簇', 'golden record 已就位')}        ${
           data.top_clusters.length
             ? table({
                 rows: data.top_clusters,

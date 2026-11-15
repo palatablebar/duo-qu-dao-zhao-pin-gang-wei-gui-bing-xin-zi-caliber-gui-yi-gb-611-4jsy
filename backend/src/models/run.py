@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models import Base
@@ -25,5 +25,11 @@ class Run(Base):
     metrics: Mapped[dict] = mapped_column(JSON, default=dict)
     log_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     seed_key: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True)
+
+    # 发布口径：本次运行对应的完整发布版是否所有渠道批次都收齐
+    publish_complete: Mapped[bool] = mapped_column(Boolean, default=True)
+    releasable_clusters: Mapped[int] = mapped_column(Integer, default=0)
+    withheld_clusters: Mapped[int] = mapped_column(Integer, default=0)
+
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

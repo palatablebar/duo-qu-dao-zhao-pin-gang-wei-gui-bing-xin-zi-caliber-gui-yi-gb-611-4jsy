@@ -10,6 +10,7 @@ from src.constants.enums import (
     DEGREE_LABELS,
     EXPERIENCE_LABELS,
     PARSE_STATUS_LABELS,
+    POST_INGEST_LABELS,
     Role,
 )
 from src.models.channel import Channel
@@ -66,6 +67,9 @@ def serialize(post: Post, channel: Channel | None, role: str) -> dict:
         "published_at": iso_utc(post.published_at),
         "expire_at": iso_utc(post.expire_at),
         "raw_text": mask_text(post.raw_text, post.company_raw) if viewer else post.raw_text,
+        "ingest_state": post.ingest_state or "fresh",
+        "ingest_label": POST_INGEST_LABELS.get(post.ingest_state or "fresh", post.ingest_state or "fresh"),
+        "ingest_batch_id": post.ingest_batch_id,
         "created_at": iso_utc(post.created_at),
     }
     if viewer:
@@ -84,6 +88,7 @@ def list_posts(
     channel_id: int | None = None,
     city: str | None = None,
     salary_status: str | None = None,
+    ingest_state: str | None = None,
     q: str | None = None,
     limit: int = 30,
     offset: int = 0,
@@ -99,6 +104,9 @@ def list_posts(
     if salary_status:
         stmt = stmt.where(Post.salary_status == salary_status)
         count_stmt = count_stmt.where(Post.salary_status == salary_status)
+    if ingest_state:
+        stmt = stmt.where(Post.ingest_state == ingest_state)
+        count_stmt = count_stmt.where(Post.ingest_state == ingest_state)
     if q:
         like = f"%{q.strip()}%"
         clause = (

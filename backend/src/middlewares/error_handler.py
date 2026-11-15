@@ -28,9 +28,21 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError):
+        # pydantic v2 的 ctx 可能携带 ValueError 等异常对象，不能直接 JSON 序列化
+        safe_errors = []
+        for err in exc.errors()[:4]:
+            safe = {}
+            for key, value in err.items():
+                if key == "ctx":
+                    safe[key] = {k: str(v) for k, v in (value or {}).items()}
+                elif key == "url":
+                    safe[key] = str(value)
+                else:
+                    safe[key] = value
+            safe_errors.append(safe)
         return JSONResponse(
             status_code=422,
-            content={"code": "VALIDATION", "message": "请求参数不合法", "detail": exc.errors()[:4]},
+            content={"code": "VALIDATION", "message": "请求参数不合法", "detail": safe_errors},
         )
 
     @app.exception_handler(Exception)

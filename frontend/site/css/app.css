@@ -1345,3 +1345,47 @@ pre.code {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- 来稿批次：发布版本横幅 ---------- */
+.edition-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.edition-banner .badge {
+  flex: 0 0 auto;
+}
+
+.edition-banner.is-complete {
+  background: var(--ok-wash);
+  border-left: 4px solid var(--ok);
+}
+
+.edition-banner.is-partial {
+  background: var(--accent-wash);
+  border-left: 4px solid var(--accent);
+}
+
+.edition-banner b.red,
+td .red,
+.stat .v.red {
+  color: var(--accent);
+}
+
+/* 模拟回执 JSON 输入 */
+#ingest-form textarea,
+textarea#receipt {
+  resize: vertical;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 2px;
+}
+
+#ingest-form .form-error:empty {
+  display: none;
+}

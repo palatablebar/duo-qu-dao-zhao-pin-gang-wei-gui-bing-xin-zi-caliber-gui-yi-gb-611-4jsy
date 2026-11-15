@@ -15,10 +15,20 @@ router = APIRouter(prefix="/exports", tags=["exports"])
 def clusters_csv(
     request: Request,
     run_id: int | None = Query(default=None),
+    complete_only: bool = Query(default=False),
     db: Session = Depends(get_db),
     principal: dict = Depends(require_roles(*EXPORT_ROLES)),
 ):
-    return export_controller.clusters_csv(db, run_id, principal, request)
+    return export_controller.clusters_csv(db, run_id, principal, request, complete_only=complete_only)
+
+
+@router.get("/ingest-batches.csv")
+def batches_csv(
+    request: Request,
+    db: Session = Depends(get_db),
+    principal: dict = Depends(require_roles(*EXPORT_ROLES)),
+):
+    return export_controller.batches_csv(db, principal, request)
 
 
 @router.get("/posts.csv")

@@ -25,6 +25,9 @@ def serialize(run: Run) -> dict:
         "dupes_removed": run.dupes_removed,
         "metrics": run.metrics or {},
         "log_text": run.log_text,
+        "publish_complete": run.publish_complete,
+        "releasable_clusters": run.releasable_clusters,
+        "withheld_clusters": run.withheld_clusters,
         "started_at": iso_utc(run.started_at),
         "finished_at": iso_utc(run.finished_at),
     }
@@ -46,6 +49,9 @@ def execute_run(db: Session, run: Run) -> Run:
         run.posts_in = int(metrics["posts_in"])
         run.clusters_out = int(metrics["clusters"])
         run.dupes_removed = int(metrics["dupes_removed"])
+        run.publish_complete = bool(metrics.get("publish_complete", True))
+        run.releasable_clusters = int(metrics.get("releasable_clusters", metrics["clusters"]))
+        run.withheld_clusters = int(metrics.get("withheld_clusters", 0))
         run.status = result["status"]
     except Exception as exc:  # noqa: BLE001 - 运行失败要留痕，不抛 500
         run.status = "failed"

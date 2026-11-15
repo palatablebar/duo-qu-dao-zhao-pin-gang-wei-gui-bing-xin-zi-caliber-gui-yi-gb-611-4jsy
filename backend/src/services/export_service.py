@@ -9,11 +9,15 @@ from src.constants.enums import (
     DEGREE_LABELS,
     EXPERIENCE_LABELS,
     PARSE_STATUS_LABELS,
+    POST_INGEST_LABELS,
+    BATCH_STATUS_LABELS,
     REVIEW_DECISION_LABELS,
+    RELEASE_STATE_LABELS,
     TRIGGER_LABELS,
 )
 from src.models.channel import Channel
 from src.models.cluster import Cluster
+from src.models.ingest_batch import IngestBatch
 from src.models.post import Post
 from src.models.review import Review
 from src.models.run import Run
@@ -25,15 +29,19 @@ def _stamp(value, fmt: str = "%Y-%m-%d %H:%M") -> str:
     return value.strftime(fmt) if value else ""
 
 
-def clusters_csv(db: Session, run_id: int | None = None) -> bytes:
+def clusters_csv(db: Session, run_id: int | None = None, complete_only: bool = False) -> bytes:
     target = run_id or (run_service.latest_run(db).id if run_service.latest_run(db) else None)
     stmt = select(Cluster).where(Cluster.run_id == target) if target else select(Cluster).where(False)
     clusters = db.scalars(stmt.order_by(Cluster.id)).all()
+    if complete_only:
+        # 完整发布清单：只放可发布簇，暂缓（含沿用/隔离成员）的一律不进
+        clusters = [item for item in clusters if item.release_state == "releasable"]
     run = db.get(Run, target) if target else None
     headers = [
         "簇ID", "运行编号", "指纹", "公司", "职位", "城市", "月薪下限", "月薪上限",
         "月薪中位", "薪资口径", "渠道数", "渠道", "成员数", "消重条数", "置信度",
-        "状态", "待复核", "学历", "经验", "最近发布", "过期时间", "归并阈值",
+        "状态", "待复核", "发布口径", "沿用成员", "隔离成员", "发布说明",
+        "学历", "经验", "最近发布", "过期时间", "归并阈值",
     ]
     rows = [
         [
@@ -54,6 +62,10 @@ def clusters_csv(db: Session, run_id: int | None = None) -> bytes:
             f"{item.confidence:.3f}",
             CLUSTER_STATUS_LABELS.get(item.status, item.status),
             "是" if item.needs_review else "否",
+            RELEASE_STATE_LABELS.get(item.release_state, item.release_state),
+            item.carried_member_count or 0,
+            item.isolated_member_count or 0,
+            item.release_note or "",
             DEGREE_LABELS.get(item.degree, item.degree),
             EXPERIENCE_LABELS.get(item.experience, item.experience),
             _stamp(item.published_at, "%Y-%m-%d"),
@@ -68,7 +80,7 @@ def clusters_csv(db: Session, run_id: int | None = None) -> bytes:
 def posts_csv(db: Session) -> bytes:
     rows = db.execute(select(Post, Channel).join(Channel, Post.channel_id == Channel.id).order_by(Post.id)).all()
     headers = [
-        "岗位ID", "渠道编码", "渠道名称", "外部ID", "公司", "公司归一", "职位", "职位词干", "城市",
+        "岗位ID", "渠道编码", "渠道名称", "外部ID", "来稿状态", "公司", "公司归一", "职位", "职位词干", "城市",
         "薪资原值", "口径状态", "名义月薪下限", "名义月薪上限", "发薪月数",
         "归一后月薪下限", "归一后月薪上限", "月薪中位", "口径说明", "置信度", "学历", "经验", "发布时间", "过期时间",
     ]
@@ -78,6 +90,7 @@ def posts_csv(db: Session) -> bytes:
             channel.code,
             channel.name,
             post.external_id,
+            POST_INGEST_LABELS.get(post.ingest_state or "fresh", post.ingest_state or "fresh"),
             post.company_raw,
             post.company_norm,
             post.title_raw,
@@ -99,6 +112,43 @@ def posts_csv(db: Session) -> bytes:
             _stamp(post.expire_at, "%Y-%m-%d"),
         ]
         for post, channel in rows
+    ]
+    return to_csv(headers, body)
+
+
+def batches_csv(db: Session) -> bytes:
+    """来稿批次核对台账：每行一个批次，应有/实到/重复/缺量/沿用/隔离与接收时间逐项可对。"""
+    rows = db.execute(
+        select(IngestBatch, Channel)
+        .join(Channel, IngestBatch.channel_id == Channel.id)
+        .order_by(IngestBatch.received_at.desc(), IngestBatch.id.desc())
+    ).all()
+    headers = [
+        "批次ID", "渠道编码", "渠道名称", "批次号", "核对状态", "采集器原报",
+        "应有数", "实到数", "新稿入库", "重复数", "无效数", "缺量数", "旧稿沿用", "隔离",
+        "缺量外部ID", "重试次数", "接收时间",
+    ]
+    body = [
+        [
+            batch.id,
+            channel.code,
+            channel.name,
+            batch.batch_no,
+            BATCH_STATUS_LABELS.get(batch.status, batch.status),
+            batch.source_status,
+            batch.expected_count,
+            batch.arrived_count,
+            batch.inserted_count,
+            batch.duplicate_count,
+            batch.invalid_count,
+            batch.missing_count,
+            batch.carried_count,
+            batch.isolated_count,
+            "、".join(batch.missing_external_ids or []),
+            batch.retries,
+            _stamp(batch.received_at),
+        ]
+        for batch, channel in rows
     ]
     return to_csv(headers, body)
 
@@ -134,7 +184,7 @@ def runs_csv(db: Session) -> bytes:
     runs = db.scalars(select(Run).order_by(Run.id)).all()
     headers = [
         "运行编号", "触发方式", "状态", "阈值", "原始岗位", "归并簇", "消重条数",
-        "不可比占比", "操作人", "开始时间", "结束时间",
+        "可发布簇", "暂缓发布簇", "完整发布版", "不可比占比", "操作人", "开始时间", "结束时间",
     ]
     body = [
         [
@@ -145,6 +195,9 @@ def runs_csv(db: Session) -> bytes:
             run.posts_in,
             run.clusters_out,
             run.dupes_removed,
+            run.releasable_clusters,
+            run.withheld_clusters,
+            "是" if run.publish_complete else "否（过渡版）",
             f"{(run.metrics or {}).get('noncomparable_rate', 0) * 100:.2f}%",
             run.operator_email,
             _stamp(run.started_at),

@@ -22,13 +22,24 @@ def _audit(db: Session, principal: dict, action: str, entity: str, content: byte
     db.commit()
 
 
-def clusters_csv(db: Session, run_id: int | None, principal: dict, request: Request) -> Response:
-    content = export_service.clusters_csv(db, run_id)
+def clusters_csv(db: Session, run_id: int | None, principal: dict, request: Request, complete_only: bool = False) -> Response:
+    content = export_service.clusters_csv(db, run_id, complete_only=complete_only)
     _audit(db, principal, "export.clusters", "cluster", content, request, run_id)
+    filename = "jobmerge-clusters-complete.csv" if complete_only else "jobmerge-clusters.csv"
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",
-        headers=csv_response_headers("jobmerge-clusters.csv"),
+        headers=csv_response_headers(filename),
+    )
+
+
+def batches_csv(db: Session, principal: dict, request: Request) -> Response:
+    content = export_service.batches_csv(db)
+    _audit(db, principal, "export.ingest", "ingest_batch", content, request)
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers=csv_response_headers("jobmerge-ingest-batches.csv"),
     )
 
 

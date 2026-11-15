@@ -9,7 +9,10 @@ from src.constants.enums import (
     DEGREE_LABELS,
     EXPERIENCE_LABELS,
     PARSE_STATUS_LABELS,
+    POST_INGEST_LABELS,
+    RELEASE_STATE_LABELS,
     Role,
+    ReleaseState,
 )
 from src.models.channel import Channel
 from src.models.cluster import Cluster
@@ -53,6 +56,14 @@ def serialize(cluster: Cluster, role: str, review: Review | None = None) -> dict
         "confidence": round(cluster.confidence, 3),
         "needs_review": cluster.needs_review,
         "review_reason": cluster.review_reason or "",
+        "release_state": cluster.release_state or ReleaseState.RELEASABLE.value,
+        "release_label": RELEASE_STATE_LABELS.get(
+            cluster.release_state or ReleaseState.RELEASABLE.value,
+            cluster.release_state or ReleaseState.RELEASABLE.value,
+        ),
+        "carried_member_count": cluster.carried_member_count or 0,
+        "isolated_member_count": cluster.isolated_member_count or 0,
+        "release_note": cluster.release_note or "",
         "golden_post_id": cluster.golden_post_id,
         "member_ids": cluster.member_ids or [],
         "review": {
@@ -80,6 +91,7 @@ def list_clusters(
     q: str | None = None,
     multi_only: bool = False,
     needs_review: bool | None = None,
+    release_state: str | None = None,
     limit: int = 30,
     offset: int = 0,
 ) -> dict:
@@ -98,6 +110,9 @@ def list_clusters(
     if needs_review is not None:
         stmt = stmt.where(Cluster.needs_review.is_(needs_review))
         count_stmt = count_stmt.where(Cluster.needs_review.is_(needs_review))
+    if release_state:
+        stmt = stmt.where(Cluster.release_state == release_state)
+        count_stmt = count_stmt.where(Cluster.release_state == release_state)
     if q:
         like = f"%{q.strip()}%"
         clause = (
@@ -162,6 +177,8 @@ def _members(db: Session, cluster: Cluster, role: str) -> list[dict]:
                 "published_at": iso_utc(row.published_at),
                 "raw_text": mask_text(row.raw_text, row.company_raw) if viewer else row.raw_text,
                 "is_golden": row.id == cluster.golden_post_id,
+                "ingest_state": row.ingest_state or "fresh",
+                "ingest_label": POST_INGEST_LABELS.get(row.ingest_state or "fresh", row.ingest_state or "fresh"),
                 "company_norm": row.company_norm,
                 "title_stem": row.title_stem,
                 "monthly_low_value": row.monthly_low,

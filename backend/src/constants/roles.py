@@ -25,6 +25,7 @@ PERMISSIONS: dict[str, set[str]] = {
         "cluster:read", "cluster:review",
         "run:read", "run:create",
         "export:read", "audit:read", "overview:read",
+        "ingest:read", "ingest:write",
     },
     Role.ANALYST.value: {
         "channel:read",
@@ -32,9 +33,11 @@ PERMISSIONS: dict[str, set[str]] = {
         "cluster:read", "cluster:review",
         "run:read", "run:create",
         "export:read", "overview:read",
+        "ingest:read", "ingest:write",
     },
     Role.VIEWER.value: {
         "channel:read", "post:read", "cluster:read", "overview:read",
+        "ingest:read",
     },
 }
 
@@ -43,6 +46,7 @@ RUN_CREATE_ROLES = (Role.ADMIN.value, Role.ANALYST.value)
 REVIEW_ROLES = (Role.ADMIN.value, Role.ANALYST.value)
 EXPORT_ROLES = (Role.ADMIN.value, Role.ANALYST.value)
 AUDIT_ROLES = (Role.ADMIN.value,)
+INGEST_WRITE_ROLES = (Role.ADMIN.value, Role.ANALYST.value)
 READ_ROLES = (Role.ADMIN.value, Role.ANALYST.value, Role.VIEWER.value)
 
 

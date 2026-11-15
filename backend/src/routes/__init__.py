@@ -7,6 +7,7 @@ from src.routes.channels import router as channels_router
 from src.routes.clusters import router as clusters_router
 from src.routes.exports import router as exports_router
 from src.routes.health import router as health_router
+from src.routes.ingest import router as ingest_router
 from src.routes.overview import router as overview_router
 from src.routes.posts import router as posts_router
 from src.routes.reviews import router as reviews_router
@@ -18,6 +19,7 @@ api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(overview_router)
 api_router.include_router(channels_router)
+api_router.include_router(ingest_router)
 api_router.include_router(posts_router)
 api_router.include_router(clusters_router)
 api_router.include_router(reviews_router)

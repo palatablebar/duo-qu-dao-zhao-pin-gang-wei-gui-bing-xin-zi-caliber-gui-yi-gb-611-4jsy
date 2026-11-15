@@ -69,6 +69,11 @@ def overview(db: Session, role: str) -> dict:
     counts = run_service.cluster_counts(db, latest.id if latest else None)
     reviews_total = db.scalar(select(func.count()).select_from(Review)) or 0
 
+    from src.services import ingest_service
+
+    ledger = ingest_service.channel_ledger(db)
+    ingest_totals = ledger["totals"]
+
     channel_rows = db.execute(
         select(Channel.code, Channel.name, func.count(Post.id))
         .outerjoin(Post, Post.channel_id == Channel.id)
@@ -139,12 +144,30 @@ def overview(db: Session, role: str) -> dict:
             "posts_in": latest.posts_in,
             "clusters_out": latest.clusters_out,
             "dupes_removed": latest.dupes_removed,
+            "publish_complete": latest.publish_complete,
+            "releasable_clusters": latest.releasable_clusters,
+            "withheld_clusters": latest.withheld_clusters,
             "started_at": iso_utc(latest.started_at),
             "finished_at": iso_utc(latest.finished_at),
             "metrics": latest.metrics or {},
         }
         if latest
         else None,
+        "ingest": {
+            "complete_channels": ingest_totals["complete"],
+            "partial_channels": ingest_totals["partial"],
+            "failed_channels": ingest_totals["failed"],
+            "no_batch_channels": ingest_totals["no_batch"],
+            "expected": ingest_totals["expected"],
+            "arrived": ingest_totals["arrived"],
+            "missing": ingest_totals["missing"],
+            "duplicate": ingest_totals["duplicate"],
+            "fresh_posts": ingest_totals["fresh_posts"],
+            "carried_posts": ingest_totals["carried_posts"],
+            "isolated_posts": ingest_totals["isolated_posts"],
+            "publish_complete": ingest_totals["publish_complete"],
+            "channels": ledger["items"],
+        },
         "channel_mix": [
             {"code": code, "name": name, "count": int(count)} for code, name, count in channel_rows
         ],

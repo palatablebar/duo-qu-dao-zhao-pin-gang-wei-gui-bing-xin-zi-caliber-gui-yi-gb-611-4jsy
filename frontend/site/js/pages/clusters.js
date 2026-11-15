@@ -1,9 +1,9 @@
 import { api } from '../api.js';
-import { ENUMS, can } from '../config.js';
+import { ENUMS, can, releaseTone } from '../config.js';
 import { bindFilters, clusterStatusBadge, clusterTable, filterBar, fmtMoney, fmtPct, openClusterDrawer, sectionHead } from '../components.js';
-import { emptyState, errorBox, errorMessage, esc, field, fmtTime, kv, toast } from '../ui.js';
+import { badge, emptyState, errorBox, errorMessage, esc, field, fmtTime, kv, toast } from '../ui.js';
 
-const state = { q: '', status: '', multi: '', needsReview: '' };
+const state = { q: '', status: '', multi: '', needsReview: '', releaseState: '' };
 
 function runForm(role) {
   if (!can(role, 'run:create')) {
@@ -32,6 +32,7 @@ export const clustersPage = {
           status: state.status,
           multi: state.multi === 'true' ? 'true' : '',
           needs_review: state.needsReview === '' ? '' : state.needsReview,
+          release_state: state.releaseState || '',
           limit: 60,
         }),
         api.get('/api/runs', { limit: 5 }),
@@ -77,14 +78,32 @@ export const clustersPage = {
                     { value: 'false', label: '否' },
                   ],
                 },
+                {
+                  label: '发布口径',
+                  name: 'release_state',
+                  value: state.releaseState,
+                  options: [
+                    { value: '', label: '全部' },
+                    { value: 'releasable', label: '可发布' },
+                    { value: 'withheld', label: '暂缓发布' },
+                  ],
+                },
               ],
               actions: can(ctx.user.role, 'export:read')
-                ? '<button class="btn sm ghost" id="export-clusters">导出归并清单 CSV</button>'
+                ? `<span style="display:flex;gap:6px">
+                    <button class="btn sm ghost" id="export-clusters">导出归并清单 CSV</button>
+                    <button class="btn sm accent" id="export-complete">导出完整发布版 CSV</button>
+                  </span>`
                 : '',
             })}
           </div>
+          ${
+            latest && latest.publish_complete === false
+              ? '<div class="panel-note" style="margin:8px 0"><span class="badge high">当前为过渡版</span> 有渠道本批未收齐，「完整发布版」只含可发布簇，含旧稿沿用/隔离成员的簇已暂缓。</div>'
+              : ''
+          }
           ${clusterTable(clusters.items, ctx.user.role)}
-          <div class="panel-note">点击任一行查看成员对照、相似度与复核表单；导出 CSV 的行数 = 当前运行的归并簇数。</div>
+          <div class="panel-note">点击任一行查看成员对照、相似度与复核表单；完整发布版 CSV 行数 = 最近运行的可发布簇数。</div>
         </section>
 
         <div class="side-stack">
@@ -97,7 +116,14 @@ export const clustersPage = {
                   ? `<div style="margin-top:10px">${kv([
                       ['最近运行', `<span class="mono">${esc(latest.run_no)}</span>`],
                       ['状态', `<span class="badge ${latest.status === 'success' ? 'ok' : 'warn'}">${esc(ENUMS.runStatus[latest.status] || latest.status)}</span>`],
+                      [
+                        '发布版本',
+                        latest.publish_complete
+                          ? badge('ok', '完整发布版')
+                          : badge('high', `过渡版 · 暂缓 ${latest.withheld_clusters ?? 0} 簇`),
+                      ],
                       ['输入 / 输出', `${latest.posts_in} 条 → ${latest.clusters_out} 簇`],
+                      ['可发布 / 暂缓', `${latest.releasable_clusters ?? latest.clusters_out} / ${latest.withheld_clusters ?? 0} 簇`],
                       ['消重', `<b class="tabular">${latest.dupes_removed}</b> 条`],
                       ['阈值', `<span class="mono">${Number(latest.threshold).toFixed(2)}</span>`],
                       ['待复核 / 过期', `${metrics.needs_review ?? '—'} / ${metrics.expired_clusters ?? '—'}`],
@@ -127,6 +153,7 @@ export const clustersPage = {
       state.status = values.status || '';
       state.multi = values.multi || '';
       state.needsReview = values.needs_review || '';
+      state.releaseState = values.release_state || '';
       render();
     });
     view.querySelectorAll('table.data tbody tr').forEach((row) => {
@@ -137,7 +164,15 @@ export const clustersPage = {
     view.querySelector('#export-clusters')?.addEventListener('click', async () => {
       try {
         await api.download('/api/exports/clusters.csv', 'jobmerge-clusters.csv');
-        toast('归并清单 CSV 已开始下载');
+        toast('归并清单 CSV 已开始下载（含暂缓簇）');
+      } catch (err) {
+        toast(errorMessage(err), 'err');
+      }
+    });
+    view.querySelector('#export-complete')?.addEventListener('click', async () => {
+      try {
+        await api.download('/api/exports/clusters.csv?complete_only=true', 'jobmerge-clusters-complete.csv');
+        toast('完整发布版 CSV 已开始下载（仅可发布簇）');
       } catch (err) {
         toast(errorMessage(err), 'err');
       }

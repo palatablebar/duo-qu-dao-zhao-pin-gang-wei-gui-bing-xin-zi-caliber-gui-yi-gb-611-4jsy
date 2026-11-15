@@ -1,9 +1,9 @@
 import { api } from '../api.js';
-import { ENUMS, can } from '../config.js';
+import { ENUMS, can, ingestTone } from '../config.js';
 import { bindFilters, filterBar, fmtMoney, fmtPct, parseBadge, salaryRange, sectionHead } from '../components.js';
-import { drawer, emptyState, errorBox, errorMessage, esc, field, fmtTime, kv, table, toast } from '../ui.js';
+import { badge, drawer, emptyState, errorBox, errorMessage, esc, field, fmtTime, kv, table, toast } from '../ui.js';
 
-const state = { q: '', channelId: '', city: '', salaryStatus: '' };
+const state = { q: '', channelId: '', city: '', salaryStatus: '', ingestState: '' };
 
 function openPost(post) {
   drawer({
@@ -11,6 +11,7 @@ function openPost(post) {
     subtitle: `${post.channel_name || post.channel_code} · ${post.external_id} · ${post.city}`,
     body: `${kv([
       ['薪资原值', `<b class="mono">${esc(post.salary_raw)}</b>`],
+      ['来稿状态', badge(ingestTone(post.ingest_state), post.ingest_label || ENUMS.ingestState[post.ingest_state] || post.ingest_state)],
       ['口径状态', parseBadge(post)],
       ['归一后月薪', `<span class="tabular">${salaryRange(post.monthly_low, post.monthly_high)}</span>`],
       ['月薪中位', `<b class="tabular">${fmtMoney(post.monthly_median)}</b>`],
@@ -57,6 +58,7 @@ export const postsPage = {
           channel_id: state.channelId,
           city: state.city,
           salary_status: state.salaryStatus,
+          ingest_state: state.ingestState,
           limit: 60,
         }),
         api.get('/api/channels'),
@@ -95,6 +97,12 @@ export const postsPage = {
                   value: state.salaryStatus,
                   options: [{ value: '', label: '全部' }, ...Object.entries(ENUMS.parseStatus).map(([value, label]) => ({ value, label }))],
                 },
+                {
+                  label: '来稿状态',
+                  name: 'ingest_state',
+                  value: state.ingestState,
+                  options: [{ value: '', label: '全部' }, ...Object.entries(ENUMS.ingestState).map(([value, label]) => ({ value, label }))],
+                },
               ],
               actions: can(ctx.user.role, 'export:read')
                 ? '<button class="btn sm ghost" id="export-posts">导出岗位口径 CSV</button>'
@@ -127,6 +135,11 @@ export const postsPage = {
                       render: (row) => fmtMoney(row.monthly_median),
                     },
                     { key: 'salary_status', label: '口径', render: (row) => parseBadge(row) },
+                    {
+                      key: 'ingest_state',
+                      label: '来稿',
+                      render: (row) => badge(ingestTone(row.ingest_state), row.ingest_label || ENUMS.ingestState[row.ingest_state] || row.ingest_state),
+                    },
                     { key: 'published_at', label: '发布', className: 'tight', render: (row) => fmtTime(row.published_at) },
                   ],
                 })
@@ -166,6 +179,7 @@ export const postsPage = {
       state.channelId = values.channel_id || '';
       state.city = values.city || '';
       state.salaryStatus = values.salary_status || '';
+      state.ingestState = values.ingest_state || '';
       render();
     });
     view.querySelectorAll('table.data tbody tr').forEach((row) => {

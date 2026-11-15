@@ -4,10 +4,12 @@ import { fmtMoney, fmtPct, openClusterDrawer, sectionHead } from '../components.
 import { emptyState, errorBox, errorMessage, esc, fmtTime, table, toast } from '../ui.js';
 
 const EXPORTS = [
-  { path: '/api/exports/clusters.csv', file: 'jobmerge-clusters.csv', label: '归并清单 CSV', hint: '一行一个归并簇，含月薪中位与置信度' },
-  { path: '/api/exports/posts.csv', file: 'jobmerge-posts.csv', label: '岗位口径 CSV', hint: '薪资原值 → 归一值 + 口径说明' },
+  { path: '/api/exports/clusters.csv', file: 'jobmerge-clusters.csv', label: '归并清单 CSV（全量）', hint: '一行一个归并簇，含发布口径与暂缓说明' },
+  { path: '/api/exports/clusters.csv?complete_only=true', file: 'jobmerge-clusters-complete.csv', label: '完整发布版 CSV', hint: '仅可发布簇，行数与可发布计数逐项对上' },
+  { path: '/api/exports/ingest-batches.csv', file: 'jobmerge-ingest-batches.csv', label: '来稿批次台账 CSV', hint: '应有/实到/重复/缺量/沿用/隔离 + 接收时间' },
+  { path: '/api/exports/posts.csv', file: 'jobmerge-posts.csv', label: '岗位口径 CSV', hint: '薪资原值 → 归一值 + 来稿状态' },
   { path: '/api/exports/reviews.csv', file: 'jobmerge-reviews.csv', label: '复核记录 CSV', hint: '结论、复核人与备注' },
-  { path: '/api/exports/runs.csv', file: 'jobmerge-runs.csv', label: '运行记录 CSV', hint: '每次归并的输入/产出/不可比占比' },
+  { path: '/api/exports/runs.csv', file: 'jobmerge-runs.csv', label: '运行记录 CSV', hint: '每次归并的输入/产出/完整发布版标记' },
 ];
 
 function auditPanel(items) {

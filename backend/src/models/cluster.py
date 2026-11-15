@@ -45,6 +45,13 @@ class Cluster(Base):
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     review_reason: Mapped[str] = mapped_column(String(200), default="")
+
+    # 发布口径：可发布 / 暂缓发布（含旧稿沿用或隔离成员）
+    release_state: Mapped[str] = mapped_column(String(16), default="releasable", index=True)
+    carried_member_count: Mapped[int] = mapped_column(Integer, default=0)
+    isolated_member_count: Mapped[int] = mapped_column(Integer, default=0)
+    release_note: Mapped[str] = mapped_column(String(200), default="")
+
     golden_post_id: Mapped[int | None] = mapped_column(ForeignKey("posts.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

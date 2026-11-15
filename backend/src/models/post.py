@@ -42,5 +42,12 @@ class Post(Base):
     raw_text: Mapped[str] = mapped_column(Text, default="")
 
     seed_key: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+
+    # 来稿批次口径：来自哪个批次、当前是新稿/沿用/隔离
+    ingest_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ingest_batches.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    ingest_state: Mapped[str] = mapped_column(String(16), default="fresh", index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

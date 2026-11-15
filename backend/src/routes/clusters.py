@@ -18,6 +18,7 @@ def list_clusters(
     q: str | None = None,
     multi: bool = False,
     needs_review: bool | None = None,
+    release_state: str | None = None,
     limit: int = Query(30),
     offset: int = Query(0),
     db: Session = Depends(get_db),
@@ -32,6 +33,7 @@ def list_clusters(
         q=q,
         multi_only=multi,
         needs_review=needs_review,
+        release_state=release_state,
         limit=page.limit,
         offset=page.offset,
     )
